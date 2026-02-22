@@ -3,19 +3,23 @@
 
 ---
 
-## The Core Idea and Motivation
+## Introduction
 
-The study of dark matter through strong gravitational lensing has reached a pivotal juncture. While previous machine learning efforts (like the 2024 GSoC project LensPINN) successfully demonstrated the classification of dark matter substructures on simulated datasets, transitioning to real observational data remains a massive hurdle. 
+Recent studies, such as the 2020 work *Deep Learning the Morphology of Dark Matter Substructure*, established that convolutional neural networks could reliably distinguish between different types of dark matter—such as CDM subhalos versus axion vortices—in simulated strong lensing images. Treating this as a classification problem was identified as an "intermediate step" before the ultimate goal: determining the position, mass, and other physical properties of individual substructures.
 
-Traditional analytic modeling tools (like Lenstronomy) provide high physical accuracy but suffer from computationally expensive Markov Chain Monte Carlo (MCMC) sampling, often requiring hours per lens. On the flip side, standard deep learning models offer incredible speed but lack the physical consistency required for true scientific validity when facing complex noise, point spread functions (PSF), and light contamination present in real-world surveys like HSC, HST, and the upcoming Vera C. Rubin Observatory (LSST).
+The 2021 follow-up, *Decoding Dark Matter Substructure without Supervision*, further demonstrated that unsupervised models, particularly Adversarial Autoencoders, could serve as highly effective anomaly detectors. Crucially, the reconstruction MSE loss was shown to inherently encode information about the location of substructures, pointing toward the possibility of "using this data to invert the lens equation to produce the distribution of substructure mass on the lensing plane."
 
-To bridge this gap, I am developing a framework capable of rapid inference and discovery in real observational datasets. The goal is to move beyond simple classification and enable the precise localization of substructures and the quantification of their mass power spectrum.
+Most recently, the 2024 *LensPINN* architecture demonstrated the efficacy of explicitly integrating the gravitational lensing equation into a ViT-CNN framework, achieving exceptional convergence and accuracy by enforcing physics-informed preprocessing and lensing inversion.
 
-Rather than just learning a class label, DI-PINN learns to predict continuous lensing parameters ($\theta_E, q, \phi, \gamma$) alongside the full convergence field, κ(x,y) (the projected mass density). With this map, I can:
-- Locate subhalos by finding peaks in the κ field.
-- Measure precise masses by integrating around those peaks.
-- Understand dark matter morphology (e.g., Cold Dark Matter vs. Axion models).
-- Extract classification, regression, and anomaly detection entirely as post-processing steps.
+Analyzing these developments sequentially reveals a clear methodological trajectory. Successive models move progressively toward a common destination: theory-agnostic, spatial mass maps of dark matter substructures in real telescope images. While the physical models are well-understood, the ML architectures are proven on simulations, and observational datasets are imminent with the Vera C. Rubin Observatory (LSST) and Euclid, the framework to synthesize these breakthroughs for application on complex, real-world observational data remains to be established.
+
+This proposal introduces DI-PINN (Differentiable Inverse Physics-Informed Neural Network). DI-PINN is formulated to explicitly invert the lens equation to produce the distribution of substructure mass on the lensing plane. Building directly upon the foundational physics-informed approaches of its predecessors, DI-PINN extends the architecture in three critical directions necessary for observational application:
+
+- **Continuous 2D Substructure Mapping:** Predicting the full 2D lensing potential Ψ(x,y) rather than relying on scalar parameters or discrete classification schemes.
+- **Observational Data Readiness:** Handling real observational complexities through Multi-Gaussian Expansion (MGE) lens light subtraction and PI-AdaMatch domain adaptation.
+- **Uncertainty Quantification:** Providing calibrated Bayesian uncertainty mapping to establish statistically rigorous confidence intervals for the network's predictions.
+
+The core architectural paradigm mirrors the progression from black-box to physics-informed modeling: instead of learning a direct mapping from images to target labels, a differentiable physics engine (`caustics`) is embedded as a fixed, deterministic layer within the network. The trainable components learn to predict the lensing potential Ψ(x,y); the physics layer then performs exact ray-tracing, strictly enforces the Poisson equation ∇²Ψ = 2κ, and reconstructs the observed image. Consequently, gradients flow through this entire physical pipeline, ensuring that every weight update iteratively drives the predictions toward solutions that satisfy Einstein's field equations.
 
 ## Architecture Data Flow
 
@@ -78,7 +82,7 @@ Applying inverse physics models to real space data introduces several roadblocks
 
 ## Current MVC Outline
 
-This framework is not just a theoretical proposal—the core minimum viable code (MVC) has already been built, tested, and validated. This foundational code proves that the data pipeline, loss structure, and theoretical integration fundamentally work:
+THe current flow for the MVC is as follows:
 
 *   **Synthetic Data Pipeline:** Generates complex SIS halos along with random subhalos on the fly.
 *   **U-Net Baseline Model:** A functioning encoder-decoder architecture handling complex spatial features.
