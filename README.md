@@ -17,31 +17,6 @@ Rather than just learning a class label, DI-PINN learns to predict continuous le
 - Understand dark matter morphology (e.g., Cold Dark Matter vs. Axion models).
 - Extract classification, regression, and anomaly detection entirely as post-processing steps.
 
-## Expanding Beyond Previous Methods
-
-This framework represents a paradigm shift from "black-box prediction" to "physics-driven inverse modeling."
-
-| Core Problem | Previous Work (LensPINN 2024) | DI-PINN (This Architecture) |
-| --- | --- | --- |
-| **Physics Engine** | Static Analytical Formula (limited to SIS profiles). | Differentiable Simulator (`caustics`) handling complex generic profiles. |
-| **Input Data** | Trained and tested exclusively on Simulated Model II data. | Explicitly designed for real HSC/HST/LSST observations + Sim. |
-| **Foreground Light** | Assumed negligible or already removed. | Active lens light removal via Multi-Gaussian Expansion (MGE). |
-| **Scientific Value** | Outputs a categorical class label (e.g., "Axion" vs "CDM"). | Mass parameters, reconstructed source image, and the power spectrum. |
-| **Confidence Level** | Deterministic (Softmax). | Probabilistic (Bayesian Deep Ensembles) providing uncertainty maps. |
-
-This evolution moves the project from simply "labelling the jar" to actually "counting the marbles inside."
-
-## The Key Components
-
-Every piece of this framework integrates directly into the neural network's computation graph to handle real data and enforce physics.
-
-| Component | Purpose | Why it's critical here |
-| --- | --- | --- |
-| **`caustics`** | Differentiable Ray-Tracing | Provides a fully differentiable simulator where gradients flow from the reconstructed image back through the physical lensing equations to update network parameters. |
-| **Multi-Gaussian Expansion (MGE)** | Automated Light Subtraction | Real galaxy light drowns the faint lensed arcs. MGE models and isolates them mathematically. |
-| **PI-AdaMatch** | Domain Adaptation | Enforces a *Self-Consistent Lensing Loss* on pseudo-labels for real images, ensuring predictions satisfy gravity during Domain Adaptation. |
-| **Bayesian Deep Ensembles** | Uncertainty Quantification | Calculates the pixel-wise variance of source reconstructions. High-variance regions serve as candidate locations for dark matter subhalos. |
-
 ## Architecture Data Flow
 
 The architecture is explicitly designed so the signal flows from raw input down to a physically constrained mass map.
@@ -54,12 +29,27 @@ flowchart TB
         PRE --> ENC["LensPINN_large ViT Encoder\nPredicts Lensing\nPotential Ψ(x,y)"]
     end
     
-    ENC -->|Ψ(x,y)| LENS["Differentiable Lensing Layer (caustics)\n- α = ∇Ψ (deflection angles)\n- β = θ - α (source coordinates)\n- I_rec = ray-trace(S(β))"]
+    ENC -->|Ψ_x,y| LENS["Differentiable Lensing Layer (caustics)<br>α = ∇Ψ (deflection angles)<br>β = θ - α (source coordinates)<br>I_rec = ray-trace(S(β))"]
     
-    LENS --> LOSS["Loss Computation\nℒ = ℒ_data + λ₁ℒ_poisson + λ₂ℒ_reg"]
+    LENS --> LOSS["Loss Computation<br>ℒ = ℒ_data + λ₁ℒ_poisson + λ₂ℒ_reg"]
     
-    LOSS --> OUT["Outputs\n- Precise κ map\n- Reconstructed Source\n- Uncertainty Maps"]
+    LOSS --> OUT["Outputs<br>- Precise κ map<br>- Reconstructed Source<br>- Uncertainty Maps"]
 ```
+
+## Key Components
+
+This framework represents a paradigm shift from "black-box prediction" to "physics-driven inverse modeling." Every piece of this framework integrates directly into the neural network's computation graph to handle real data and enforce physics.
+
+| Component / Feature | Previous Work (LensPINN 2024) | DI-PINN (This Architecture) | Why it's critical here |
+| --- | --- | --- | --- |
+| **Physics Engine** | Static Analytical Formula (limited to SIS profiles). | Differentiable Simulator (`caustics`) handling complex generic profiles. | Provides a fully differentiable simulator where gradients flow from the reconstructed image back through the physical lensing equations to update network parameters. |
+| **Input Data** | Trained and tested exclusively on Simulated Model II data. | Explicitly designed for real HSC/HST/LSST observations + Sim. | Enables the model to bridge the gap between idealized models and real telescope findings. |
+| **Foreground Light** | Assumed negligible or already removed. | Active lens light removal via Multi-Gaussian Expansion (MGE). | Real galaxy light drowns the faint lensed arcs. MGE models and isolates them mathematically. |
+| **Scientific Value** | Outputs a categorical class label (e.g., "Axion" vs "CDM"). | Mass parameters, reconstructed source image, and the power spectrum. | Moves beyond categories to actual scalable physical parameters. |
+| **Confidence Level** | Deterministic (Softmax). | Probabilistic (Bayesian Deep Ensembles) providing uncertainty maps. | Calculates the pixel-wise variance of source reconstructions. High-variance regions serve as candidate locations for dark matter subhalos. |
+| **Domain Adaptation** | None. | PI-AdaMatch. | Enforces a *Self-Consistent Lensing Loss* on pseudo-labels for real images, ensuring predictions satisfy gravity during Domain Adaptation. |
+
+*This evolution moves the project from simply "labelling the jar" to actually "counting the marbles inside."*
 
 ## The Underlying Physics
 
@@ -86,16 +76,14 @@ Applying inverse physics models to real space data introduces several roadblocks
 | **Securing accurate uncertainty calibration.** | A deep ensemble of independently initialized models provides epistemic uncertainty. The pixel-wise variance of these models explicitly highlights regions where the prediction is unreliable. |
 | **Lack of a ground truth κ map for real observations.** | Model validation is performed by comparing predictions against Lenstronomy MCMC fits on "Gold Standard" lenses. Injection-recovery tests confirm the reliable detection of synthetic subhalos. |
 
-## Current Progress and Proof of Concept
+## Current MVC Outline
 
-This framework is not just a theoretical proposal—the core minimum viable code (MVC) has already been built, tested, and validated. 
+This framework is not just a theoretical proposal—the core minimum viable code (MVC) has already been built, tested, and validated. This foundational code proves that the data pipeline, loss structure, and theoretical integration fundamentally work:
 
-| Component | Status | Details |
-| --- | --- | --- |
-| **Synthetic Data Pipeline** | Complete | Generates complex SIS halos along with random subhalos on the fly. |
-| **U-Net Baseline Model** | Complete | A functioning encoder-decoder architecture handling complex spatial features. |
-| **Physics Modules** | Complete | The integrated Poisson solver and ray-tracing logic have been built and unit-tested to ensure exact physics calculations. |
-| **Training Pipeline** | Complete | Implements supervised looping with MSE loss, live checkpointing, and dynamic plotting. |
-| **Trained Weights** | Complete | Holds the baseline trained model (`mvc_unet.pth`) capable of successful κ reconstruction on simplified data. |
+*   **Synthetic Data Pipeline:** Generates complex SIS halos along with random subhalos on the fly.
+*   **U-Net Baseline Model:** A functioning encoder-decoder architecture handling complex spatial features.
+*   **Physics Modules:** The integrated Poisson solver and ray-tracing logic have been built and unit-tested to ensure exact physics calculations.
+*   **Training Pipeline:** Implements supervised looping with MSE loss, live checkpointing, and dynamic plotting.
+*   **Trained Weights:** Holds the baseline trained model (`mvc_unet.pth`) capable of successful κ reconstruction on simplified data.
 
-This foundational code proved that the data pipeline, loss structure, and theoretical integration fundamentally work. Development now shifts to scaling this solid base by wrapping it fully around the `caustics` engine and introducing the noise, foreground glare, and underlying uncertainty of actual telescope observations.
+Development now shifts to scaling this solid base by wrapping it fully around the `caustics` engine and introducing the noise, foreground glare, and underlying uncertainty of actual telescope observations.
