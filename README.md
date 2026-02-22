@@ -3,100 +3,99 @@
 
 ---
 
-## The Core Idea
+## The Core Idea and Motivation
 
-Strong gravitational lensing is one of the most direct ways we have to map dark matter. For a long time, DeepLense has been pushing machine learning forward in this space. They went from basic CNN classification back in 2020 all the way to LensPINN in 2024. LensPINN is incredible—it embedded the actual lens equation into the network to classify dark matter substructure and hit 99.6% accuracy on simulated data. But that’s the catch: it only works on simulations, and it only tells you a class label, like "this is an axion" or "this is cold dark matter."
+The study of dark matter through strong gravitational lensing has reached a pivotal juncture. While previous machine learning efforts (like the 2024 GSoC project LensPINN) successfully demonstrated the classification of dark matter substructures on simulated datasets, transitioning to real observational data remains a massive hurdle. 
 
-Real observatory data from places like HSC, HST, or LSST is a completely different beast. You have noise, telescope blur (PSF), the blinding light of the foreground galaxy itself, and a massive domain gap between perfect simulations and messy reality. These classification models just break when you show them real data. On top of that, knowing the class label doesn't actually tell you where a subhalo is, how heavy it is, or how many there are. If we want real insight into these lensing systems and their sub-structures, we can't just classify them. We have to reconstruct the mass distribution itself.
+Traditional analytic modeling tools (like Lenstronomy) provide high physical accuracy but suffer from computationally expensive Markov Chain Monte Carlo (MCMC) sampling, often requiring hours per lens. On the flip side, standard deep learning models offer incredible speed but lack the physical consistency required for true scientific validity when facing complex noise, point spread functions (PSF), and light contamination present in real-world surveys like HSC, HST, and the upcoming Vera C. Rubin Observatory (LSST).
 
-That's where the convergence field, κ(x,y), comes in. It's the projected mass density of the lens. If we can reconstruct a full κ map, we can:
-- Find subhalos by looking for peaks in κ.
-- Measure their masses by integrating around those peaks.
-- Count the subhalos.
-- Compare actual dark matter morphologies.
-- Treat classification, regression, and anomaly detection as straightforward post-processing steps on the map we already built.
+To bridge this gap, I am developing a framework capable of rapid inference and discovery in real observational datasets. The goal is to move beyond simple classification and enable the precise localization of substructures and the quantification of their mass power spectrum.
 
-So, DI-PINN is built to do exactly that. We learn to reconstruct κ maps directly from real lensing images. To do this, we embed a fixed, differentiable physics engine called `caustics` right into the network. That handles the physics constraint. To handle the messy real-world data, we bring in Multi-Gaussian Expansion (MGE) to subtract the foreground galaxy light, Physics-Informed AdaMatch to bridge the gap between simulation and reality, and Bayesian Deep Ensembles to actually give us confidence intervals and tell us where we can trust our predictions.
+Rather than just learning a class label, DI-PINN learns to predict continuous lensing parameters ($\theta_E, q, \phi, \gamma$) alongside the full convergence field, κ(x,y) (the projected mass density). With this map, I can:
+- Locate subhalos by finding peaks in the κ field.
+- Measure precise masses by integrating around those peaks.
+- Understand dark matter morphology (e.g., Cold Dark Matter vs. Axion models).
+- Extract classification, regression, and anomaly detection entirely as post-processing steps.
 
 ## Expanding Beyond Previous Methods
 
-If we look at what was accomplished previously (like LensPINN in 2024) and what DI-PINN is built to solve, the differences are stark:
+This framework represents a paradigm shift from "black-box prediction" to "physics-driven inverse modeling."
 
-| Core Problem | What Has Been Done (LensPINN 2024) | DI-PINN (Our Approach) |
+| Core Problem | Previous Work (LensPINN 2024) | DI-PINN (This Architecture) |
 | --- | --- | --- |
-| **Handling Real Datasets & Noise** | Trained and tested exclusively on simulated (Model II) data. | Designed for HSC/HST/LSST data by using MGE light subtraction and PI-AdaMatch domain adaptation to handle real-world noise. |
-| **Observational Constraints** | Assumed lens light was already removed; no real-data training. | Fine-tuned directly on real cutouts using physics-informed pseudo-labels. |
-| **Physics-Informed Architecture** | Embedded the lens equation mathematically as a scalar Einstein radius. | Predicts the entire 2D field, enforcing the Poisson equation dynamically via `caustics`. |
-| **Multiple Tasks (Classification, Regression, etc.)** | Output was purely classification. | By reconstructing the entire κ map, we can perform classification, regression, and anomaly detection entirely as post-processing. |
-| **Wide Variety of Galaxy Data** | Validated only on simulations. | Validated on HSC, HST, and Model IV (real-galaxy backgrounds). |
-| **Lensing System Insights** | A single output class label. | Outputs precise κ maps, spatial subhalo locations, reliable mass estimates, and uncertainty contours. |
-| **Sub-Structure Information** | None. | Subhalo candidates, discrete mass numbers, and the mass power spectrum. |
+| **Physics Engine** | Static Analytical Formula (limited to SIS profiles). | Differentiable Simulator (`caustics`) handling complex generic profiles. |
+| **Input Data** | Trained and tested exclusively on Simulated Model II data. | Explicitly designed for real HSC/HST/LSST observations + Sim. |
+| **Foreground Light** | Assumed negligible or already removed. | Active lens light removal via Multi-Gaussian Expansion (MGE). |
+| **Scientific Value** | Outputs a categorical class label (e.g., "Axion" vs "CDM"). | Mass parameters, reconstructed source image, and the power spectrum. |
+| **Confidence Level** | Deterministic (Softmax). | Probabilistic (Bayesian Deep Ensembles) providing uncertainty maps. |
+
+This evolution moves the project from simply "labelling the jar" to actually "counting the marbles inside."
 
 ## The Key Components
 
-Every piece of this framework is chosen to solve a specific, practical problem. All of these concepts exist and are validated in literature—we are just bringing them together to solve the full inverse problem.
+Every piece of this framework integrates directly into the neural network's computation graph to handle real data and enforce physics.
 
 | Component | Purpose | Why it's critical here |
 | --- | --- | --- |
-| **`caustics`** | Differentiable ray-tracing | It forces the networks to obey the lens equation exactly instead of as a soft, generic loss approximation. Gradients flow naturally through the physics. |
-| **Multi-Gaussian Expansion (MGE)** | Foreground light removal | Real galaxy light often completely drowns the faint lensed arcs we care about. MGE isolates them mathematically. |
-| **PI-AdaMatch** | Domain adaptation (sim to real) | Guarantees that the pseudo-labels generated for real images actually satisfy gravity, like ensuring Einstein rings are closed. |
-| **Bayesian Deep Ensembles** | Uncertainty quantification | Gives us a pixel-by-pixel confidence interval. It essentially tells us exactly where we can trust the map and where we can't. |
+| **`caustics`** | Differentiable Ray-Tracing | Provides a fully differentiable simulator where gradients flow from the reconstructed image back through the physical lensing equations to update network parameters. |
+| **Multi-Gaussian Expansion (MGE)** | Automated Light Subtraction | Real galaxy light drowns the faint lensed arcs. MGE models and isolates them mathematically. |
+| **PI-AdaMatch** | Domain Adaptation | Enforces a *Self-Consistent Lensing Loss* on pseudo-labels for real images, ensuring predictions satisfy gravity during Domain Adaptation. |
+| **Bayesian Deep Ensembles** | Uncertainty Quantification | Calculates the pixel-wise variance of source reconstructions. High-variance regions serve as candidate locations for dark matter subhalos. |
 
-## How the Architecture Flows
+## Architecture Data Flow
 
-The architecture is built so the signal flows cleanly from raw input down to a physically constrained mass map.
+The architecture is explicitly designed so the signal flows from raw input down to a physically constrained mass map.
 
 ```mermaid
-flowchart TD
-    I["Input Image\nI_obs(θ) (real/simulated)"] --> PRE["Preprocessing\n- MGE lens light subtraction\n- Learning from Difference\n- Differentiable PSF convolution"]
-    PRE --> ENC["Vision Transformer (ViT) Encoder\nPredicts full 2D lensing potential Ψ(x,y)"]
-    ENC --> LENS["Differentiable Lensing Layer (caustics)\n- α = ∇Ψ (deflection angles)\n- β = θ - α (source coordinates)\n- I_rec = ray-trace(S(β))"]
+flowchart TB
+    subgraph ENCODING["Encoding Pipeline"]
+        direction LR
+        I["Input Image\nI_obs(θ)\n(real/simulated)"] --> PRE["Preprocessing\n- MGE Light Subtraction\n- Differentiable PSF"]
+        PRE --> ENC["LensPINN_large ViT Encoder\nPredicts Lensing\nPotential Ψ(x,y)"]
+    end
+    
+    ENC -->|Ψ(x,y)| LENS["Differentiable Lensing Layer (caustics)\n- α = ∇Ψ (deflection angles)\n- β = θ - α (source coordinates)\n- I_rec = ray-trace(S(β))"]
+    
     LENS --> LOSS["Loss Computation\nℒ = ℒ_data + λ₁ℒ_poisson + λ₂ℒ_reg"]
-    LOSS --> OUT["Output\n- κ map (mass distribution)\n- Reconstructed source image\n- Uncertainty maps"]
+    
+    LOSS --> OUT["Outputs\n- Precise κ map\n- Reconstructed Source\n- Uncertainty Maps"]
 ```
 
 ## The Underlying Physics
 
-There are a few key equations that the network is forced to obey. By baking these in, we stop the network from hallucinating physically impossible mass distributions.
+There are a few key equations that the network is forced to obey. By baking these in via the `caustics` library, the network is prevented from hallucinating physically impossible mass distributions.
 
 | Equation | Mathematical Form | What it Enforces |
 | --- | --- | --- |
 | **Poisson** | ∇²Ψ = 2κ | The fundamental relationship tying mass to gravitational potential. |
 | **Deflection** | α = ∇Ψ | The potential gradient dictates how the light actually bends. |
-| **Lens Equation** | β = θ - α(θ) | The geometric mapping from the image plane back to the source plane. |
-| **Data Fidelity** | ℒ_data = ‖I_obs - I_rec‖² | The image we reconstruct through ray-tracing must perfectly match what the telescope observed. |
-| **Physics Consistency** | ℒ_poisson = ‖∇²Ψ - 2κ‖² | The network's internal representation has to satisfy the strict laws of gravity. |
+| **Lens Equation** | β = θ - α(θ) | The geometric ray-tracing mapping from the image plane back to the source plane. |
+| **Data Fidelity** | ℒ_{data} = ‖I_{obs} - I_{rec}‖² | The image reconstructed through the forward pass must match what the telescope observed. |
+| **Physics Consistency** | ℒ_{poisson} = ‖∇²Ψ - 2κ‖² | The network's internal representation strictly satisfies the laws of gravity. |
 
-## Anticipated Challenges and How We Solve Them
+## Anticipated Challenges and Mitigation Strategies
 
-When you try to run an inverse physics model on real space data, things go wrong. Here is how we accounted for the major roadblocks:
+Applying inverse physics models to real space data introduces several roadblocks. Here is how I constructed the pipeline to mitigate them:
 
-| The Problem | How We Handle It |
+| Roadblock | Mitigation Strategy |
 | --- | --- |
-| **MGE itself isn't differentiable.** | We run it as a one-off pre-processing step for each image. The lens light isn't part of the dark matter inference anyway, so taking it out of the gradient graph is totally fine. |
-| **Predicting a full 2D potential field can be unstable.** | We're using a U-Net style decoder with skip connections to naturally encourage smoothness. We also apply a Laplacian regularization to strictly penalize unphysical wave oscillations in the potential. |
-| **Memory bottlenecks during ray-tracing over full image grids.** | We rely on mixed-precision training (float16) and heavy gradient checkpointing. The `caustics` backend is deeply optimized for GPUs. If needed, we train downsampled 64x64 patches early on. |
-| **PI-AdaMatch producing garbage pseudo-labels at the start.** | We don't touch real data immediately. We do a pure simulation warm-up until the model learns the physics. Then we gradually introduce the real dataset, dropping any pseudo-labels that have a reconstruction error above our safety threshold. |
-| **Getting real uncertainty calibration.** | We fall back to the industry standard of training a 5-model deep ensemble. If running 5 identical models is too heavy, we swap to standard Monte Carlo dropout. |
-| **You can never have a ground truth κ map for real images.** | We validate our results by comparing them against Lenstronomy MCMC fits on heavily studied benchmark lenses (like those from SLACS). We perform standard injection-recovery tests to verify we can consistently spot synthetic subhalos. |
+| **MGE itself isn't differentiable.** | It is run as an automated one-off pre-processing step using `mge_fit`. Since lens light isn't part of the dark matter inference, treating it outside the gradient graph works perfectly. |
+| **Predicting a full 2D potential field can be unstable.** | The U-Net style decoder includes skip connections to naturally encourage smoothness, alongside a Laplacian regularization term to penalize unphysical wave oscillations. |
+| **Memory bottlenecks during ray-tracing over full grids.** | Handled via mixed-precision training (float16) and gradient checkpointing. The `caustics` backend is highly GPU-optimized to keep memory overhead manageable. |
+| **PI-AdaMatch producing low-quality pseudo-labels early on.** | Training begins with a pure simulation warm-up. Real data is gradually introduced, and pseudo-labels are strictly filtered out if their reconstruction error is above a designated threshold. |
+| **Securing accurate uncertainty calibration.** | A deep ensemble of independently initialized models provides epistemic uncertainty. The pixel-wise variance of these models explicitly highlights regions where the prediction is unreliable. |
+| **Lack of a ground truth κ map for real observations.** | Model validation is performed by comparing predictions against Lenstronomy MCMC fits on "Gold Standard" lenses. Injection-recovery tests confirm the reliable detection of synthetic subhalos. |
 
-## What Has Already Been Built (The MVC)
+## Current Progress and Proof of Concept
 
-This isn't just a purely theoretical idea on paper. The core minimum viable code (MVC) is already built, tested, and working.
+This framework is not just a theoretical proposal—the core minimum viable code (MVC) has already been built, tested, and validated. 
 
 | Component | Status | Details |
 | --- | --- | --- |
-| **Synthetic Data Pipeline** | Complete | We can generate SIS halos and random subhalos on the fly. |
-| **U-Net Baseline Model** | Complete | A fully functioning encoder-decoder architecture with skip-connections. |
-| **Physics Modules** | Complete | The integrated Poisson solver and ray-tracing pipeline is built and unit-tested. |
-| **Training Pipeline** | Complete | Supervised looping with MSE loss, live checkpointing, and dynamic plotting. |
-| **Trained Weights** | Complete | `mvc_unet.pth` holds the baseline trained model capable of successful κ reconstruction. |
+| **Synthetic Data Pipeline** | Complete | Generates complex SIS halos along with random subhalos on the fly. |
+| **U-Net Baseline Model** | Complete | A functioning encoder-decoder architecture handling complex spatial features. |
+| **Physics Modules** | Complete | The integrated Poisson solver and ray-tracing logic have been built and unit-tested to ensure exact physics calculations. |
+| **Training Pipeline** | Complete | Implements supervised looping with MSE loss, live checkpointing, and dynamic plotting. |
+| **Trained Weights** | Complete | Holds the baseline trained model (`mvc_unet.pth`) capable of successful κ reconstruction on simplified data. |
 
-This MVC proved that the data pipeline, the loss structure, and the training loop fundamentally work for reconstructing mass maps from simulated lensing. The remainder of DI-PINN is about extending this rock-solid base to handle the intense noise, foreground glare, and underlying uncertainty of actual telescope observations.
-
-## Conclusion
-
-DI-PINN is exactly what happens when you decide that just classifying dark matter isn't enough anymore. Moving from simulated classification blocks to actual, probabilistic mass reconstruction on real observational data is a huge leap, but an incredibly necessary one. We need insight—where the subhalos actually are, how massive they are, and exactly how confident we are in that guess.
-
-By bringing together differentiable physics, modern domain adaptation, and Bayesian uncertainty bounds, we stop throwing a black box at the sky and start enforcing the actual laws of gravity in our networks.
+This foundational code proved that the data pipeline, loss structure, and theoretical integration fundamentally work. Development now shifts to scaling this solid base by wrapping it fully around the `caustics` engine and introducing the noise, foreground glare, and underlying uncertainty of actual telescope observations.
