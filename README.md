@@ -4,22 +4,45 @@
 ---
 
 ## Introduction
+### Sequential Developments
 
-Recent studies, such as the 2020 work *Deep Learning the Morphology of Dark Matter Substructure*, established that convolutional neural networks could reliably distinguish between different types of dark matter—such as CDM subhalos versus axion vortices—in simulated strong lensing images. Treating this as a classification problem was identified as an "intermediate step" before the ultimate goal: determining the position, mass, and other physical properties of individual substructures.
+Previous studies, such as the 2020 work *Deep Learning the Morphology of Dark Matter Substructure*, established that convolutional neural networks could reliably distinguish between different types of dark matter—such as CDM subhalos versus axion vortices—in simulated strong lensing images. Treating this as a classification problem was identified as an "intermediate step" before the ultimate goal: determining the position, mass, and other physical properties of individual substructures.
 
 The 2021 follow-up, *Decoding Dark Matter Substructure without Supervision*, further demonstrated that unsupervised models, particularly Adversarial Autoencoders, could serve as highly effective anomaly detectors. Crucially, the reconstruction MSE loss was shown to inherently encode information about the location of substructures, pointing toward the possibility of "using this data to invert the lens equation to produce the distribution of substructure mass on the lensing plane."
 
-Most recently, the 2024 *LensPINN* architecture demonstrated the efficacy of explicitly integrating the gravitational lensing equation into a ViT-CNN framework, achieving exceptional convergence and accuracy by enforcing physics-informed preprocessing and lensing inversion.
-
 Analyzing these developments sequentially reveals a clear methodological trajectory. Successive models move progressively toward a common destination: theory-agnostic, spatial mass maps of dark matter substructures in real telescope images. While the physical models are well-understood, the ML architectures are proven on simulations, and observational datasets are imminent with the Vera C. Rubin Observatory (LSST) and Euclid, the framework to synthesize these breakthroughs for application on complex, real-world observational data remains to be established.
 
-This proposal introduces DI-PINN (Differentiable Inverse Physics-Informed Neural Network). DI-PINN is formulated to explicitly invert the lens equation to produce the distribution of substructure mass on the lensing plane. Building directly upon the foundational physics-informed approaches of its predecessors, DI-PINN extends the architecture in three critical directions necessary for observational application:
+### DI-PINN
 
-- **Continuous 2D Substructure Mapping:** Predicting the full 2D lensing potential Ψ(x,y) rather than relying on scalar parameters or discrete classification schemes.
-- **Observational Data Readiness:** Handling real observational complexities through Multi-Gaussian Expansion (MGE) lens light subtraction and PI-AdaMatch domain adaptation.
-- **Uncertainty Quantification:** Providing calibrated Bayesian uncertainty mapping to establish statistically rigorous confidence intervals for the network's predictions.
+This proposal introduces DI-PINN (Differentiable Inverse Physics-Informed Neural Network). The DI-PINN framework integrates the `caustics` lensing library directly into the neural network's computation graph. Unlike traditional PINNs that might only penalize residuals based on a static equation, `caustics` provides a fully differentiable simulator (built on PyTorch) that allows gradients to flow from the reconstructed image back through the physical lensing equations to update the network parameters.
 
-The core architectural paradigm mirrors the progression from black-box to physics-informed modeling: instead of learning a direct mapping from images to target labels, a differentiable physics engine (`caustics`) is embedded as a fixed, deterministic layer within the network. The trainable components learn to predict the lensing potential Ψ(x,y); the physics layer then performs exact ray-tracing, strictly enforces the Poisson equation ∇²Ψ = 2κ, and reconstructs the observed image. Consequently, gradients flow through this entire physical pipeline, ensuring that every weight update iteratively drives the predictions toward solutions that satisfy Einstein's field equations.
+**Core Architecture Components:**
+
+- **Vision Transformer (ViT) Backbone:** A LensPINN_large architecture (adapting EfficientNet or ViT encoders) serves as the primary feature extractor. It takes the observed lensed image as input and predicts the macroscopic mass parameters (Einstein radius $\theta_E$, shear $\gamma$, ellipticity $e$) and the pixelated source light profile.
+- **Differentiable Lensing Layer:** The predicted parameters are fed into the `caustics.Lens` and `caustics.Source` modules. This layer performs ray-tracing operations $\beta = \theta - \alpha(\theta)$ to reconstruct the lensed image from the predicted source and mass model.
+- **Physics-Informed Consistency Loss:** The model is trained to minimize the Lensing Reconstruction Loss—the difference between the observed image and the image re-lensed by the differentiable layer. This ensures that every prediction satisfies the gravitational lensing equation.
+- **Real-Data Adaptation Modules:** To handle the complexities of real skies, the framework incorporates a Multi-Gaussian Expansion (MGE) module for automated lens-light subtraction, and Physics-Informed AdaMatch (PI-AdaMatch) for robust domain adaptation. The ultimate goal is to progress from labeling the dark matter to mapping and quantifying it.
+
+#### Core Architecture Flow
+
+The core architecture follows the progression from black-box to physics-informed modeling. Instead of learning a direct mapping from images to target labels, a differentiable physics engine (`caustics`) is embedded as a fixed, deterministic layer within the network.
+
+```mermaid
+graph TD
+    A[Trainable Components Predict Potential] -->|Ψ x,y| B[Exact Ray-Tracing]
+    B -->|Enforces Poisson Eq| C[Reconstructs Observed Image]
+    C -->|Gradient Flow| A
+    
+    subgraph Physics Layer
+        B
+        E[∇²Ψ = 2κ]
+        B -.-> E
+    end
+```
+
+1. **Prediction:** The trainable components learn to predict the lensing potential $\Psi(x,y)$.
+2. **Ray-Tracing & Physics Enforcement:** The physics layer performs exact ray-tracing, strictly enforcing the Poisson equation $\nabla^2\Psi = 2\kappa$.
+3. **Reconstruction & Optimization:** The observed image is reconstructed. Consequently, gradients flow through this entire physical pipeline, ensuring that every weight update iteratively drives the predictions toward solutions that satisfy Einstein's field equations.
 
 ## Architecture Data Flow
 
@@ -42,7 +65,7 @@ flowchart TB
 
 ## Key Components
 
-This framework represents a paradigm shift from "black-box prediction" to "physics-driven inverse modeling." Every piece of this framework integrates directly into the neural network's computation graph to handle real data and enforce physics.
+This framework represents a  shift from "black-box prediction" to "physics-driven inverse modeling." 
 
 | Component / Feature | Previous Work (LensPINN 2024) | DI-PINN (This Architecture) | Why it's critical here |
 | --- | --- | --- | --- |
@@ -53,9 +76,9 @@ This framework represents a paradigm shift from "black-box prediction" to "physi
 | **Confidence Level** | Deterministic (Softmax). | Probabilistic (Bayesian Deep Ensembles) providing uncertainty maps. | Calculates the pixel-wise variance of source reconstructions. High-variance regions serve as candidate locations for dark matter subhalos. |
 | **Domain Adaptation** | None. | PI-AdaMatch. | Enforces a *Self-Consistent Lensing Loss* on pseudo-labels for real images, ensuring predictions satisfy gravity during Domain Adaptation. |
 
-*This evolution moves the project from simply "labelling the jar" to actually "counting the marbles inside."*
 
-## The Underlying Physics
+
+## The Physics
 
 There are a few key equations that the network is forced to obey. By baking these in via the `caustics` library, the network is prevented from hallucinating physically impossible mass distributions.
 
@@ -80,14 +103,3 @@ Applying inverse physics models to real space data introduces several roadblocks
 | **Securing accurate uncertainty calibration.** | A deep ensemble of independently initialized models provides epistemic uncertainty. The pixel-wise variance of these models explicitly highlights regions where the prediction is unreliable. |
 | **Lack of a ground truth κ map for real observations.** | Model validation is performed by comparing predictions against Lenstronomy MCMC fits on "Gold Standard" lenses. Injection-recovery tests confirm the reliable detection of synthetic subhalos. |
 
-## Current MVC Outline
-
-THe current flow for the MVC is as follows:
-
-*   **Synthetic Data Pipeline:** Generates complex SIS halos along with random subhalos on the fly.
-*   **U-Net Baseline Model:** A functioning encoder-decoder architecture handling complex spatial features.
-*   **Physics Modules:** The integrated Poisson solver and ray-tracing logic have been built and unit-tested to ensure exact physics calculations.
-*   **Training Pipeline:** Implements supervised looping with MSE loss, live checkpointing, and dynamic plotting.
-*   **Trained Weights:** Holds the baseline trained model (`mvc_unet.pth`) capable of successful κ reconstruction on simplified data.
-
-Development now shifts to scaling this solid base by wrapping it fully around the `caustics` engine and introducing the noise, foreground glare, and underlying uncertainty of actual telescope observations.
